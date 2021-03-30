@@ -7,6 +7,40 @@ use crate::lib::*;
 use serde::ser::{self, Impossible, Serialize};
 use serde::serde_if_integer128;
 
+/// Extension trait to enable multi-stage single-update writes
+pub trait WriteExt: io::Write {
+    /// Get access to a buffer inside the writer.
+    /// After this function returns, it will be as if all the bytes written to the returned slice
+    /// were written via a write_all call.
+    #[inline]
+    fn allocate(&mut self, _len: usize) -> Option<&mut [u8]> {
+        None
+    }
+}
+
+impl WriteExt for &mut std::net::TcpStream {}
+impl WriteExt for std::net::TcpStream {}
+
+impl WriteExt for &mut Vec<u8> {
+    #[inline]
+    fn allocate(&mut self, len: usize) -> Option<&mut [u8]> {
+        let prev_len = self.len();
+        self.reserve(len);
+        unsafe { self.set_len(prev_len + len) };
+        Some(&mut self[prev_len..])
+    }
+}
+
+impl WriteExt for Vec<u8> {
+    #[inline]
+    fn allocate(&mut self, len: usize) -> Option<&mut [u8]> {
+        let prev_len = self.len();
+        self.reserve(len);
+        unsafe { self.set_len(prev_len + len) };
+        Some(&mut self[prev_len..])
+    }
+}
+
 /// A structure for serializing Rust values into JSON.
 pub struct Serializer<W, F = CompactFormatter> {
     writer: W,
@@ -15,7 +49,7 @@ pub struct Serializer<W, F = CompactFormatter> {
 
 impl<W> Serializer<W>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
 {
     /// Creates a new JSON serializer.
     #[inline]
@@ -26,7 +60,7 @@ where
 
 impl<'a, W> Serializer<W, PrettyFormatter<'a>>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
 {
     /// Creates a new JSON pretty print serializer.
     #[inline]
@@ -37,7 +71,7 @@ where
 
 impl<W, F> Serializer<W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     /// Creates a new JSON visitor whose output will be written to the writer
@@ -56,7 +90,7 @@ where
 
 impl<'a, W, F> ser::Serializer for &'a mut Serializer<W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -463,7 +497,7 @@ where
 
         impl<'ser, W, F> Write for Adapter<'ser, W, F>
         where
-            W: io::Write,
+            W: io::Write + WriteExt,
             F: Formatter,
         {
             fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -527,7 +561,7 @@ pub enum Compound<'a, W: 'a, F: 'a> {
 
 impl<'a, W, F> ser::SerializeSeq for Compound<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -582,7 +616,7 @@ where
 
 impl<'a, W, F> ser::SerializeTuple for Compound<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -604,7 +638,7 @@ where
 
 impl<'a, W, F> ser::SerializeTupleStruct for Compound<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -626,7 +660,7 @@ where
 
 impl<'a, W, F> ser::SerializeTupleVariant for Compound<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -665,7 +699,7 @@ where
 
 impl<'a, W, F> ser::SerializeMap for Compound<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -747,7 +781,7 @@ where
 
 impl<'a, W, F> ser::SerializeStruct for Compound<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -795,7 +829,7 @@ where
 
 impl<'a, W, F> ser::SerializeStructVariant for Compound<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -858,7 +892,7 @@ fn key_must_be_a_string() -> Error {
 
 impl<'a, W, F> ser::Serializer for MapKeySerializer<'a, W, F>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     F: Formatter,
 {
     type Ok = ();
@@ -1197,7 +1231,7 @@ where
 struct NumberStrEmitter<'a, W: 'a + io::Write, F: 'a + Formatter>(&'a mut Serializer<W, F>);
 
 #[cfg(feature = "arbitrary_precision")]
-impl<'a, W: io::Write, F: Formatter> ser::Serializer for NumberStrEmitter<'a, W, F> {
+impl<'a, W: io::Write + WriteExt, F: Formatter> ser::Serializer for NumberStrEmitter<'a, W, F> {
     type Ok = ();
     type Error = Error;
 
@@ -1378,7 +1412,7 @@ impl<'a, W: io::Write, F: Formatter> ser::Serializer for NumberStrEmitter<'a, W,
 struct RawValueStrEmitter<'a, W: 'a + io::Write, F: 'a + Formatter>(&'a mut Serializer<W, F>);
 
 #[cfg(feature = "raw_value")]
-impl<'a, W: io::Write, F: Formatter> ser::Serializer for RawValueStrEmitter<'a, W, F> {
+impl<'a, W: io::Write + WriteExt, F: Formatter> ser::Serializer for RawValueStrEmitter<'a, W, F> {
     type Ok = ();
     type Error = Error;
 
@@ -1713,7 +1747,7 @@ pub trait Formatter {
     #[inline]
     fn write_f32<W>(&mut self, writer: &mut W, value: f32) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         let mut buffer = ryu::Buffer::new();
         let s = buffer.format_finite(value);
@@ -1809,7 +1843,7 @@ pub trait Formatter {
     #[inline]
     fn begin_array<W>(&mut self, writer: &mut W) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         writer.write_all(b"[")
     }
@@ -1819,7 +1853,7 @@ pub trait Formatter {
     #[inline]
     fn end_array<W>(&mut self, writer: &mut W) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         writer.write_all(b"]")
     }
@@ -1829,7 +1863,7 @@ pub trait Formatter {
     #[inline]
     fn begin_array_value<W>(&mut self, writer: &mut W, first: bool) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         if first {
             Ok(())
@@ -1852,7 +1886,7 @@ pub trait Formatter {
     #[inline]
     fn begin_object<W>(&mut self, writer: &mut W) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         writer.write_all(b"{")
     }
@@ -1862,7 +1896,7 @@ pub trait Formatter {
     #[inline]
     fn end_object<W>(&mut self, writer: &mut W) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         writer.write_all(b"}")
     }
@@ -1871,7 +1905,7 @@ pub trait Formatter {
     #[inline]
     fn begin_object_key<W>(&mut self, writer: &mut W, first: bool) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         if first {
             Ok(())
@@ -1897,7 +1931,7 @@ pub trait Formatter {
     #[inline]
     fn begin_object_value<W>(&mut self, writer: &mut W) -> io::Result<()>
     where
-        W: ?Sized + io::Write,
+        W: ?Sized + io::Write + WriteExt,
     {
         writer.write_all(b":")
     }
@@ -2065,9 +2099,21 @@ impl<'a> Formatter for PrettyFormatter<'a> {
 
 fn format_escaped_str<W, F>(writer: &mut W, formatter: &mut F, value: &str) -> io::Result<()>
 where
-    W: ?Sized + io::Write,
+    W: ?Sized + io::Write + WriteExt,
     F: ?Sized + Formatter,
 {
+    let no_escapes = value
+        .as_bytes()
+        .into_iter()
+        .all(|b| ESCAPE[*b as usize] == 0);
+    if no_escapes {
+        if let Some(buf) = writer.allocate(value.len() + 2) {
+            buf[0] = b'"';
+            buf[1..value.len() + 1].copy_from_slice(value.as_bytes());
+            buf[buf.len() - 1] = b'"';
+            return Ok(());
+        }
+    }
     tri!(formatter.begin_string(writer));
     tri!(format_escaped_str_contents(writer, formatter, value));
     tri!(formatter.end_string(writer));
@@ -2151,7 +2197,7 @@ static ESCAPE: [u8; 256] = [
 #[inline]
 pub fn to_writer<W, T>(writer: W, value: &T) -> Result<()>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     T: ?Sized + Serialize,
 {
     let mut ser = Serializer::new(writer);
@@ -2169,7 +2215,7 @@ where
 #[inline]
 pub fn to_writer_pretty<W, T>(writer: W, value: &T) -> Result<()>
 where
-    W: io::Write,
+    W: io::Write + WriteExt,
     T: ?Sized + Serialize,
 {
     let mut ser = Serializer::pretty(writer);

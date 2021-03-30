@@ -235,6 +235,9 @@ impl fmt::Display for Value {
             }
         }
 
+        impl<'a, 'b> super::ser::WriteExt for WriterFormatter<'a, 'b> {}
+        impl<'a, 'b> super::ser::WriteExt for &mut WriterFormatter<'a, 'b> {}
+
         fn io_error(_: fmt::Error) -> io::Error {
             // Error value does not matter because Display impl just maps it
             // back to fmt::Error.
