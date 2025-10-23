@@ -430,8 +430,12 @@ mod ser;
 pub mod value;
 
 mod io;
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", not(feature = "no_position")))]
 mod iter;
+#[cfg(all(feature = "std", feature = "no_position"))]
+mod simple_iter;
+#[cfg(all(feature = "std", feature = "no_position"))]
+use simple_iter as iter;
 #[cfg(feature = "float_roundtrip")]
 mod lexical;
 mod number;

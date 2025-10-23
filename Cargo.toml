@@ -93,3 +93,9 @@ raw_value = []
 # overflow the stack after deserialization has completed, including, but not
 # limited to, Display and Debug and Drop impls.
 unbounded_depth = []
+
+# By default, when reading JSON from an io::Read impl, serde_json will track
+# during all reads, what line and column is being read. Enabling this feature
+# will remove that additional state tracking, in exchange for significantly
+# improved deserialization throughput.
+no_position = []
